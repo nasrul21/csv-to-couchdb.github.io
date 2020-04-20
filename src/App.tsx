@@ -20,8 +20,11 @@ import {
   TableBody,
   TablePagination,
   MenuItem,
+  CircularProgress,
 } from '@material-ui/core';
+import { Check as CheckIcon } from '@material-ui/icons'
 import { parseCsvToRowsAndColumn } from './lib/utils';
+import DB from './lib/db';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -38,18 +41,30 @@ interface CsvType {
   csv_header: string[];
 }
 
+type ActionType = string | "insert" | "update";
+
 function App() {
   let fileReader: FileReader;
 
   const classes = useStyles();
 
+  const [couchDbUrl, setCouchDbUrl] = useState('');
+
+  const [dbStatus, setDbStatus] = useState({
+    success: false,
+    loading: false,
+    message: ''
+  });
+
+  const db = new DB(couchDbUrl);
+
   const [csv, setCsv] = useState<CsvType>({
     csv_file: '',
     csv_data: [],
     csv_header: []
-  })
+  });
 
-  const [action, setAction] = useState('');
+  const [action, setAction] = useState<ActionType>('');
   const [uniqueColumn, setUniqueColumn] = useState('');
 
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -79,6 +94,18 @@ function App() {
     setPage(0);
   };
 
+  const onTestDbClick = () => {
+    console.log(couchDbUrl);
+    setDbStatus(values => ({...values, loading: true, success: false}))
+    db.testConncetion().then(info => {
+      console.log(info)
+      setDbStatus(values => ({...values, loading: false, success: true}));
+    }).catch(error => {
+      console.log(error);
+      setDbStatus(values => ({...values, loading: false, success: false}));
+    })
+  }
+
   return (
     <React.Fragment>
       <CssBaseline />
@@ -98,9 +125,13 @@ function App() {
             <TextField
               type="url"
               size="small"
-              label="CouchDB Link"
+              label="CouchDB Url"
+              helperText="example: http://localhost:5984/db_example"
               fullWidth
               variant="outlined"
+              placeholder="[http or https]://[DB_HOST]:[DB_PORT]/[DB_NAME]"
+              value={couchDbUrl}
+              onChange={e => setCouchDbUrl(e.target.value)}
             />
           </Grid>
           <Grid item xs={4}>
@@ -108,6 +139,12 @@ function App() {
               fullWidth
               variant="contained"
               component="label"
+              onClick={onTestDbClick}
+              startIcon={
+                dbStatus.success ? <CheckIcon /> : (
+                  dbStatus.loading ? <CircularProgress size={24} /> : null
+                )
+              }
             >
               Test DB Connection
             </Button>
@@ -147,10 +184,10 @@ function App() {
               variant="outlined"
               value={action}
               onChange={e => setAction(e.target.value as string)}
+              disabled={csv.csv_data.length === 0}
             >
               <MenuItem value="insert">INSERT</MenuItem>
-              <MenuItem value="put">PUT / Update Content</MenuItem>
-              <MenuItem value="patch">PATCH / Update Partial</MenuItem>
+              <MenuItem value="update">UPDATE</MenuItem>
             </TextField>
           </Grid>
           <Grid item xs={4} style={{ display: action === 'insert' || action === '' ? 'none' : 'block' }}>
@@ -162,6 +199,7 @@ function App() {
               variant="outlined"
               value={uniqueColumn}
               onChange={e => setUniqueColumn(e.target.value as string)}
+              disabled={csv.csv_data.length === 0}
             >
               {
                 csv.csv_header.map((header, index) => (
@@ -170,19 +208,33 @@ function App() {
               }
             </TextField>
           </Grid>
-          <Grid item xs={4}>
+          <Grid item xs={2}>
             <Button
               fullWidth
               variant="contained"
               component="label"
+              disabled={csv.csv_data.length === 0}
             >
               Execute
+            </Button>
+          </Grid>
+          <Grid item xs={2}>
+            <Button
+              fullWidth
+              variant="contained"
+              component="label"
+              disabled={csv.csv_data.length === 0}
+            >
+              Reset
             </Button>
           </Grid>
           <Grid item xs={12}>
             <TableContainer component={Paper}>
               <Table size="small">
                 <TableHead>
+                  <TableRow>
+                    <TableCell align="center" colSpan={csv.csv_header.length | 1}>CSV Preview</TableCell>
+                  </TableRow>
                   <TableRow>
                     {
                       csv.csv_header.map((header, index) => <TableCell key={index}>{header}</TableCell>)
@@ -191,7 +243,7 @@ function App() {
                 </TableHead>
                 <TableBody>
                   {
-                    csv.csv_data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((row, index) => (
+                    csv.csv_data.length > 0 ? csv.csv_data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((row, index) => (
                       <TableRow key={index}>
                         {
                           Object.values(row).map((value, index2) => (
@@ -201,7 +253,7 @@ function App() {
                           ))
                         }
                       </TableRow>
-                    ))
+                    )) : <TableRow><TableCell>No rows found, please import csv file</TableCell></TableRow>
                   }
                 </TableBody>
               </Table>
